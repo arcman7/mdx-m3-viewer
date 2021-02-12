@@ -1,5 +1,5 @@
 import Bone from '../../../parsers/m3/bone';
-import { M3ParserUint32AnimationReference, M3ParserVector3AnimationReference, M3ParserVector4AnimationReference } from '../../../parsers/m3/animationreference';
+import { Uint32AnimationReference, Vector3AnimationReference, Vector4AnimationReference } from '../../../parsers/m3/animationreference';
 
 /**
  * An M3 bone.
@@ -7,10 +7,10 @@ import { M3ParserUint32AnimationReference, M3ParserVector3AnimationReference, M3
 export default class M3Bone {
   name: string;
   parent: number;
-  location: M3ParserVector3AnimationReference;
-  rotation: M3ParserVector4AnimationReference;
-  scale: M3ParserVector3AnimationReference;
-  visibility: M3ParserUint32AnimationReference;
+  location: Vector3AnimationReference;
+  rotation: Vector4AnimationReference;
+  scale: Vector3AnimationReference;
+  visibility: Uint32AnimationReference;
   inhertTranslation: number;
   inheritScale: number;
   inheritRotation: number;
@@ -25,7 +25,7 @@ export default class M3Bone {
   constructor(bone: Bone) {
     let flags = bone.flags;
 
-    this.name = bone.name.getAll().join('');
+    this.name = <string>bone.name.get();
     this.parent = bone.parent;
     this.location = bone.location;
     this.rotation = bone.rotation;

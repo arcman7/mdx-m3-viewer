@@ -1,5 +1,5 @@
 import M3ParserStg from '../../../parsers/m3/stg';
-import { M3ParserAnimationReference } from '../../../parsers/m3/animationreference';
+import { AnimationReference } from '../../../parsers/m3/animationreference';
 import M3ModelInstance from './modelinstance';
 import M3Sts from './sts';
 import M3Stc from './stc';
@@ -14,13 +14,13 @@ export default class M3Stg {
   stc: M3Stc[];
 
   constructor(stg: M3ParserStg, sts: M3Sts[], stc: M3Stc[]) {
-    this.name = stg.name.getAll().join('');
-    this.stcIndices = <Uint32Array>stg.stcIndices.getAll();
+    this.name = <string>stg.name.get();
+    this.stcIndices = <Uint32Array>stg.stcIndices.get();
     this.sts = sts;
     this.stc = stc;
   }
 
-  getValueUnsafe(animRef: M3ParserAnimationReference, instance: M3ModelInstance) {
+  getValueUnsafe(animRef: AnimationReference, instance: M3ModelInstance) {
     let stcIndices = this.stcIndices;
     let stcs = this.stc;
     let stss = this.sts;

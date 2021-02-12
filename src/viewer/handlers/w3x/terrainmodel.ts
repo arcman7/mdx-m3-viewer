@@ -1,12 +1,12 @@
 import MdlxModel from '../../../parsers/mdlx/model';
-import ShaderProgram from '../../gl/program';
-import War3MapViewer from './viewer';
+import Shader from '../../gl/shader';
+import War3MapViewerMap from './map';
 
 /**
  * A static terrain model.
  */
 export default class TerrainModel {
-  viewer: War3MapViewer;
+  map: War3MapViewerMap;
   vertexBuffer: WebGLBuffer;
   faceBuffer: WebGLBuffer;
   normalsOffset: number;
@@ -17,12 +17,15 @@ export default class TerrainModel {
   instances: number;
   vao: WebGLVertexArrayObjectOES | null;
 
-  constructor(viewer: War3MapViewer, arrayBuffer: ArrayBuffer, locations: number[], textures: number[], shader: ShaderProgram) {
-    let gl = viewer.gl;
-    let webgl = viewer.webgl;
+  constructor(map: War3MapViewerMap, arrayBuffer: ArrayBuffer, locations: number[], textures: number[], shader: Shader) {
+    let gl = map.viewer.gl;
+    let webgl = map.viewer.webgl;
     let instancedArrays = <ANGLE_instanced_arrays>webgl.extensions.ANGLE_instanced_arrays
     let vertexArrayObject = <OES_vertex_array_object>webgl.extensions.OES_vertex_array_object;
-    let parser = new MdlxModel(arrayBuffer);
+
+    let parser = new MdlxModel();
+    parser.load(arrayBuffer);
+
     let geoset = parser.geosets[0];
     let vertices = geoset.vertices;
     let normals = geoset.normals;
@@ -82,7 +85,7 @@ export default class TerrainModel {
       vertexArrayObject.bindVertexArrayOES(null);
     }
 
-    this.viewer = viewer;
+    this.map = map;
     this.vertexBuffer = vertexBuffer;
     this.faceBuffer = faceBuffer;
     this.normalsOffset = normalsOffset;
@@ -94,8 +97,8 @@ export default class TerrainModel {
     this.vao = vao;
   }
 
-  render(shader: ShaderProgram) {
-    let viewer = this.viewer;
+  render(shader: Shader) {
+    let viewer = this.map.viewer;
     let gl = viewer.gl;
     let webgl = viewer.webgl;
     let instancedArrays = <ANGLE_instanced_arrays>webgl.extensions.ANGLE_instanced_arrays

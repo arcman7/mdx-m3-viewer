@@ -1,23 +1,9 @@
-ModelViewer = ModelViewer.default;
-
-const common = ModelViewer.common;
-const glMatrix = common.glMatrix;
-const vec3 = glMatrix.vec3;
-const quat = glMatrix.quat;
-const math = glMatrix.math;
-
-function wc3PathSolver(src, params) {
-  return localOrHive(src.toLowerCase().replace(/\\/g, '/'), params);
-}
-
 let statusElement = document.getElementById('status');
 statusElement.textContent = 'Initializing the viewer';
 
 let canvas = document.getElementById('canvas');
-let viewer = new ModelViewer.viewer.handlers.War3MapViewer(canvas, wc3PathSolver);
-viewer.solverParams = viewer.solverParams || {};
-viewer.solverParams['reforged'] = false;
-viewer.solverParams['hd'] = false;
+let viewer = new ModelViewer.default.viewer.handlers.War3MapViewer(canvas, localOrHive);
+
 let thingsLoading = [];
 
 function updateStatus() {
@@ -29,34 +15,23 @@ function updateStatus() {
 }
 
 for (let key of viewer.promiseMap.keys()) {
-  let file = key.slice(key.lastIndexOf('/') + 1);
-
-  if (file !== '') {
-    thingsLoading.push(file);
-  }
+  thingsLoading.push(ModelViewer.default.common.path.basename(key));
 }
 
 updateStatus();
 
 viewer.on('loadstart', ({ fetchUrl }) => {
-  let file = fetchUrl.slice(fetchUrl.lastIndexOf('/') + 1);
-
-  if (file !== '') {
-    thingsLoading.push(file);
-    updateStatus();
-  }
+  thingsLoading.push(ModelViewer.default.common.path.basename(fetchUrl));
+  updateStatus();
 });
 
 viewer.on('loadend', ({ fetchUrl }) => {
-  let file = fetchUrl.slice(fetchUrl.lastIndexOf('/' ) + 1);
+  let file = ModelViewer.default.common.path.basename(fetchUrl);
+  let index = thingsLoading.indexOf(file);
 
-  if (file !== '') {
-    let index = thingsLoading.indexOf(file);
-
-    if (index !== -1) {
-      thingsLoading.splice(index, 1);
-      updateStatus();
-    }
+  if (index !== -1) {
+    thingsLoading.splice(index, 1);
+    updateStatus();
   }
 });
 
@@ -74,25 +49,16 @@ let cellsElement = document.getElementById('cells');
 let instancesElement = document.getElementById('instances');
 let particlesElement = document.getElementById('particles');
 
-setupCamera(viewer.worldScene, 3000);
-
-function step() {
-  console.log('inside step')
-  if (window.stopUsingStep === true) {
-    console.log('stop using step')
-    return;
-  }
+(function step() {
   requestAnimationFrame(step);
 
   viewer.updateAndRender();
   meter.tick();
 
-  cellsElement.textContent = `Cells: ${viewer.worldScene.visibleCells}`;
-  instancesElement.textContent = `Instances: ${viewer.worldScene.visibleInstances}`;
-  particlesElement.textContent = `Particles: ${viewer.worldScene.updatedParticles}`;
-}
-
-function handleDrop(file) { }
+  cellsElement.textContent = `Cells: ${viewer.visibleCells}`;
+  instancesElement.textContent = `Instances: ${viewer.visibleInstances}`;
+  particlesElement.textContent = `Particles: ${viewer.updatedParticles}`;
+}());
 
 document.addEventListener('dragover', e => {
   e.preventDefault();
@@ -105,21 +71,21 @@ document.addEventListener('dragend', e => {
 document.addEventListener('drop', e => {
   e.preventDefault();
 
-  let file = e.dataTransfer.files[0];
-  let name = file.name;
-  let ext = name.substr(name.lastIndexOf('.')).toLowerCase();
+  if (viewer.loadedBaseFiles) {
+    let file = e.dataTransfer.files[0];
+    let name = file.name;
+    let ext = ModelViewer.default.common.path.extname(name);
 
-  if (ext === '.w3m' || ext === '.w3x') {
-    let reader = new FileReader();
+    if (ext === '.w3m' || ext === '.w3x') {
+      let reader = new FileReader();
 
-    reader.addEventListener('loadend', e => {
-      viewer.loadMap(e.target.result);
+      reader.addEventListener('loadend', e => {
+        viewer.loadMap(e.target.result);
 
-      step();
-      window.mapLoaded = true;
+        setupCamera(viewer.map.worldScene, { distance: 3000 });
+      });
 
-    });
-
-    reader.readAsArrayBuffer(file);
+      reader.readAsArrayBuffer(file);
+    }
   }
 });

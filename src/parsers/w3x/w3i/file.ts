@@ -1,4 +1,5 @@
 import BinaryStream from '../../../common/binarystream';
+import { byteLengthUtf8 } from '../../../common/utf8';
 import Force from './force';
 import Player from './player';
 import RandomItemTable from './randomitemtable';
@@ -51,13 +52,7 @@ export default class War3MapW3i {
   randomItemTables: RandomItemTable[] = [];
   unknown1: number = 0;
 
-  constructor(buffer?: ArrayBuffer) {
-    if (buffer) {
-      this.load(buffer);
-    }
-  }
-
-  load(buffer: ArrayBuffer) {
+  load(buffer: ArrayBuffer | Uint8Array) {
     let stream = new BinaryStream(buffer);
 
     this.version = stream.readInt32();
@@ -68,33 +63,33 @@ export default class War3MapW3i {
       stream.readUint32Array(this.buildVersion);
     }
 
-    this.name = stream.readUntilNull();
-    this.author = stream.readUntilNull();
-    this.description = stream.readUntilNull();
-    this.recommendedPlayers = stream.readUntilNull();
+    this.name = stream.readNull();
+    this.author = stream.readNull();
+    this.description = stream.readNull();
+    this.recommendedPlayers = stream.readNull();
     stream.readFloat32Array(this.cameraBounds);
     stream.readInt32Array(this.cameraBoundsComplements);
     stream.readInt32Array(this.playableSize);
     this.flags = stream.readUint32();
-    this.tileset = stream.read(1);
+    this.tileset = stream.readBinary(1);
     this.campaignBackground = stream.readInt32();
 
     if (this.version > 24) {
-      this.loadingScreenModel = stream.readUntilNull();
+      this.loadingScreenModel = stream.readNull();
     }
 
-    this.loadingScreenText = stream.readUntilNull();
-    this.loadingScreenTitle = stream.readUntilNull();
-    this.loadingScreenSubtitle = stream.readUntilNull();
+    this.loadingScreenText = stream.readNull();
+    this.loadingScreenTitle = stream.readNull();
+    this.loadingScreenSubtitle = stream.readNull();
     this.loadingScreen = stream.readInt32();
 
     if (this.version > 24) {
-      this.prologueScreenModel = stream.readUntilNull();
+      this.prologueScreenModel = stream.readNull();
     }
 
-    this.prologueScreenText = stream.readUntilNull();
-    this.prologueScreenTitle = stream.readUntilNull();
-    this.prologueScreenSubtitle = stream.readUntilNull();
+    this.prologueScreenText = stream.readNull();
+    this.prologueScreenTitle = stream.readNull();
+    this.prologueScreenSubtitle = stream.readNull();
 
     if (this.version > 24) {
       this.useTerrainFog = stream.readInt32();
@@ -102,8 +97,8 @@ export default class War3MapW3i {
       this.fogDensity = stream.readFloat32();
       stream.readUint8Array(this.fogColor);
       this.globalWeather = stream.readInt32();
-      this.soundEnvironment = stream.readUntilNull();
-      this.lightEnvironmentTileset = stream.read(1, true);
+      this.soundEnvironment = stream.readNull();
+      this.lightEnvironmentTileset = stream.readBinary(1);
       stream.readUint8Array(this.waterVertexColor);
     }
 
@@ -168,8 +163,7 @@ export default class War3MapW3i {
   }
 
   save() {
-    let buffer = new ArrayBuffer(this.getByteLength());
-    let stream = new BinaryStream(buffer);
+    let stream = new BinaryStream(new ArrayBuffer(this.getByteLength()));
 
     stream.writeInt32(this.version);
     stream.writeInt32(this.saves);
@@ -179,33 +173,33 @@ export default class War3MapW3i {
       stream.writeUint32Array(this.buildVersion);
     }
 
-    stream.write(`${this.name}\0`);
-    stream.write(`${this.author}\0`);
-    stream.write(`${this.description}\0`);
-    stream.write(`${this.recommendedPlayers}\0`);
+    stream.writeNull(this.name);
+    stream.writeNull(this.author);
+    stream.writeNull(this.description);
+    stream.writeNull(this.recommendedPlayers);
     stream.writeFloat32Array(this.cameraBounds);
     stream.writeInt32Array(this.cameraBoundsComplements);
     stream.writeInt32Array(this.playableSize);
     stream.writeUint32(this.flags);
-    stream.write(this.tileset);
+    stream.writeBinary(this.tileset);
     stream.writeInt32(this.campaignBackground);
 
     if (this.version > 24) {
-      stream.write(`${this.loadingScreenModel}\0`);
+      stream.writeNull(this.loadingScreenModel);
     }
 
-    stream.write(`${this.loadingScreenText}\0`);
-    stream.write(`${this.loadingScreenTitle}\0`);
-    stream.write(`${this.loadingScreenSubtitle}\0`);
+    stream.writeNull(this.loadingScreenText);
+    stream.writeNull(this.loadingScreenTitle);
+    stream.writeNull(this.loadingScreenSubtitle);
     stream.writeInt32(this.loadingScreen);
 
     if (this.version > 24) {
-      stream.write(`${this.prologueScreenModel}\0`);
+      stream.writeNull(this.prologueScreenModel);
     }
 
-    stream.write(`${this.prologueScreenText}\0`);
-    stream.write(`${this.prologueScreenTitle}\0`);
-    stream.write(`${this.prologueScreenSubtitle}\0`);
+    stream.writeNull(this.prologueScreenText);
+    stream.writeNull(this.prologueScreenTitle);
+    stream.writeNull(this.prologueScreenSubtitle);
 
     if (this.version > 24) {
       stream.writeInt32(this.useTerrainFog);
@@ -213,8 +207,8 @@ export default class War3MapW3i {
       stream.writeFloat32(this.fogDensity);
       stream.writeUint8Array(this.fogColor);
       stream.writeInt32(this.globalWeather);
-      stream.write(`${this.soundEnvironment}\0`);
-      stream.write(this.lightEnvironmentTileset);
+      stream.writeNull(this.soundEnvironment);
+      stream.writeBinary(this.lightEnvironmentTileset);
       stream.writeUint8Array(this.waterVertexColor);
     }
 
@@ -265,11 +259,11 @@ export default class War3MapW3i {
       }
     }
 
-    return buffer;
+    return stream.uint8array;
   }
 
   getByteLength() {
-    let size = 111 + this.name.length + this.author.length + this.description.length + this.recommendedPlayers.length + this.loadingScreenText.length + this.loadingScreenTitle.length + this.loadingScreenSubtitle.length + this.prologueScreenText.length + this.prologueScreenTitle.length + this.prologueScreenSubtitle.length;
+    let size = 111 + byteLengthUtf8(this.name) + byteLengthUtf8(this.author) + byteLengthUtf8(this.description) + byteLengthUtf8(this.recommendedPlayers) + byteLengthUtf8(this.loadingScreenText) + byteLengthUtf8(this.loadingScreenTitle) + byteLengthUtf8(this.loadingScreenSubtitle) + byteLengthUtf8(this.prologueScreenText) + byteLengthUtf8(this.prologueScreenTitle) + byteLengthUtf8(this.prologueScreenSubtitle);
 
     for (let player of this.players) {
       size += player.getByteLength(this.version);
@@ -288,7 +282,7 @@ export default class War3MapW3i {
     }
 
     if (this.version > 24) {
-      size += 36 + this.loadingScreenModel.length + this.prologueScreenModel.length + this.soundEnvironment.length;
+      size += 36 + byteLengthUtf8(this.loadingScreenModel) + byteLengthUtf8(this.prologueScreenModel) + byteLengthUtf8(this.soundEnvironment);
 
       for (let table of this.randomItemTables) {
         size += table.getByteLength();

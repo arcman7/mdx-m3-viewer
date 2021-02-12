@@ -1,10 +1,8 @@
+import { vec3, vec4 } from 'gl-matrix';
 import ModelViewer from './viewer';
 import Camera from './camera';
 import Grid from './grid';
 import ModelInstance from './modelinstance';
-import BatchedInstance from './batchedinstance';
-import ResourceMapper from './resourcemapper';
-import RenderBatch from './renderbatch';
 import EmittedObjectUpdater from './emittedobjectupdater';
 
 /**
@@ -24,12 +22,8 @@ export default class Scene {
   visibleInstances: number = 0;
   updatedParticles: number = 0;
   audioEnabled: boolean = false;
-  audioContext?: AudioContext;
+  audioContext: AudioContext | null = null;
   instances: ModelInstance[] = [];
-  currentInstance: number = 0;
-  batchedInstances: BatchedInstance[] = [];
-  currentBatchedInstance: number = 0;
-  batches: Map<ResourceMapper, RenderBatch> = new Map();
   emittedObjectUpdater: EmittedObjectUpdater = new EmittedObjectUpdater();
   /**
    * Similar to WebGL's own `alpha` parameter.
@@ -39,15 +33,34 @@ export default class Scene {
    * If true, alpha works as usual.
    */
   alpha: boolean = false;
+  /**
+   * The scene's background color.
+   * 
+   * Only used if `alpha` is false.
+   */
+  color: vec3 = vec3.create();
+  /**
+   * The area on the canvas in which this scene is rendered.
+   * 
+   * Defaults to the entire canvas.
+   * 
+   * The vector defines [x, y, width, height], sizes are in pixels, and everything is related to the bottom left corner of the canvas.
+   */
+  viewport: vec4 = vec4.create();
 
   constructor(viewer: ModelViewer) {
     this.viewer = viewer;
 
     let canvas = viewer.canvas;
+    let width = canvas.width;
+    let height = canvas.height;
 
-    // Use the whole canvas, and standard perspective projection values.
-    this.camera.setViewport(0, 0, canvas.width, canvas.height);
-    this.camera.perspective(Math.PI / 4, canvas.width / canvas.height, 8, 10000);
+    // Use the whole canvas by default.
+    this.viewport[2] = width;
+    this.viewport[3] = height;
+
+    // And standard perspective projection.
+    this.camera.perspective(Math.PI / 4, width / height, 8, 10000);
   }
 
   /**
@@ -116,7 +129,7 @@ export default class Scene {
     if (instance.scene === this) {
       this.grid.remove(instance);
 
-      instance.scene = undefined;
+      instance.scene = null;
 
       return true;
     }
@@ -131,7 +144,7 @@ export default class Scene {
     // First remove references to this scene stored in the instances.
     for (let cell of this.grid.cells) {
       for (let instance of cell.instances) {
-        instance.scene = undefined;
+        instance.scene = null;
       }
     }
 
@@ -152,20 +165,6 @@ export default class Scene {
     return false;
   }
 
-  addToBatch(instance: BatchedInstance) {
-    let resourceMapper = instance.resourceMapper;
-    let batches = this.batches;
-    let batch = batches.get(resourceMapper);
-
-    if (!batch) {
-      batch = instance.getBatch(resourceMapper);
-
-      batches.set(resourceMapper, batch);
-    }
-
-    batch.add(instance);
-  }
-
   /**
    * Update this scene.
    */
@@ -177,22 +176,26 @@ export default class Scene {
 
     // Update the audio context's position if it exists.
     if (this.audioContext) {
-      let [x, y, z] = camera.location;
-      let [forwardX, forwardY, forwardZ] = camera.directionY;
-      let [upX, upY, upZ] = camera.directionZ;
       let listener = this.audioContext.listener;
+      let position = camera.location;
+      let forward = camera.directionY;
+      let up = camera.directionZ;
 
-      listener.setPosition(-x, -y, -z);
-      listener.setOrientation(forwardX, forwardY, forwardZ, upX, upY, upZ);
+      listener.positionX.value = -position[0];
+      listener.positionY.value = -position[1];
+      listener.positionZ.value = -position[2];
+
+      listener.forwardX.value = forward[0];
+      listener.forwardY.value = forward[1];
+      listener.forwardZ.value = forward[2];
+
+      listener.upX.value = up[0];
+      listener.upY.value = up[1];
+      listener.upZ.value = up[2];
     }
 
     let frame = this.viewer.frame;
-
     let instances = this.instances;
-    let batchedInstances = this.batchedInstances;
-
-    let currentInstance = 0;
-    let currentBatchedInstance = 0;
 
     this.visibleCells = 0;
     this.visibleInstances = 0;
@@ -210,21 +213,14 @@ export default class Scene {
               instance.update(dt, this);
             }
 
-            if (instance.isBatched()) {
-              batchedInstances[currentBatchedInstance++] = <BatchedInstance>instance;
-            } else {
-              instances[currentInstance++] = instance;
-            }
-
-            this.visibleInstances += 1;
+            instances[this.visibleInstances++] = instance;
           }
         }
       }
     }
 
-    batchedInstances.length = currentBatchedInstance;
-
-    instances.length = currentInstance;
+    // Sort the visible instances based on depth.
+    instances.length = this.visibleInstances;
     instances.sort((a, b) => b.depth - a.depth);
 
     this.emittedObjectUpdater.update(dt);
@@ -240,7 +236,7 @@ export default class Scene {
    */
   startFrame() {
     let gl = this.viewer.gl;
-    let viewport = this.camera.viewport;
+    let viewport = this.viewport;
 
     // Set the viewport.
     gl.viewport(viewport[0], viewport[1], viewport[2], viewport[3]);
@@ -250,7 +246,10 @@ export default class Scene {
 
     // If this scene doesn't want alpha, clear it.
     if (!this.alpha) {
+      let color = this.color;
+
       gl.depthMask(true);
+      gl.clearColor(color[0], color[1], color[2], 1);
       gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     }
   }
@@ -259,21 +258,6 @@ export default class Scene {
    * Render all opaque things in this scene.
    */
   renderOpaque() {
-    // Clear all of the batches.
-    for (let batch of this.batches.values()) {
-      batch.clear();
-    }
-
-    // Add all of the batched instances to batches.
-    for (let instance of this.batchedInstances) {
-      this.addToBatch(instance);
-    }
-
-    // Render all of the batches.
-    for (let batch of this.batches.values()) {
-      batch.render();
-    }
-
     // Render all of the opaque things of non-batched instances.
     for (let instance of this.instances) {
       instance.renderOpaque();

@@ -1,4 +1,4 @@
-import { base256ToString } from '../../common/typecast';
+import { base256ToString, bytesOf } from '../../common/typecast';
 import { decodeDxt1, decodeDxt3, decodeDxt5, decodeRgtc } from '../../common/dxt';
 
 export const DDS_MAGIC = 0x20534444;
@@ -11,7 +11,7 @@ export const FOURCC_DXT5 = 0x35545844;
 export const FOURCC_ATI2 = 0x32495441;
 
 /**
- * A DDS texture.
+ * A DDS image.
  */
 export class DdsImage {
   width: number = 0;
@@ -21,14 +21,9 @@ export class DdsImage {
   mipmapHeights: number[] = [];
   mipmapDatas: Uint8Array[] = [];
 
-  constructor(buffer?: ArrayBuffer) {
-    if (buffer) {
-      this.load(buffer);
-    }
-  }
-
-  load(buffer: ArrayBuffer) {
-    let header = new Int32Array(buffer, 0, 31);
+  load(buffer: ArrayBuffer | Uint8Array) {
+    let bytes = bytesOf(buffer)
+    let header = new Int32Array(bytes.buffer, 0, 31);
 
     if (header[0] !== DDS_MAGIC) {
       throw new Error('Wrong magic number');
@@ -71,7 +66,7 @@ export class DdsImage {
 
       this.mipmapWidths[i] = width;
       this.mipmapHeights[i] = height;
-      this.mipmapDatas[i] = new Uint8Array(buffer, offset, size);
+      this.mipmapDatas[i] = bytes.subarray(offset, offset + size);
 
       offset += size;
       width = Math.max(width / 2, 1);

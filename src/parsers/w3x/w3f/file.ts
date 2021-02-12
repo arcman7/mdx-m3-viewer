@@ -1,6 +1,7 @@
 import BinaryStream from '../../../common/binarystream';
 import MapTitle from './maptitle';
 import MapOrder from './maporder';
+import { byteLengthUtf8 } from '../../../common/utf8';
 
 /**
  * war3campaign.w3f - the campaign information file.
@@ -28,28 +29,22 @@ export default class War3CampaignW3f {
   mapTitles: MapTitle[] = [];
   mapOrders: MapOrder[] = [];
 
-  constructor(buffer?: ArrayBuffer) {
-    if (buffer) {
-      this.load(buffer);
-    }
-  }
-
-  load(buffer: ArrayBuffer) {
+  load(buffer: ArrayBuffer | Uint8Array) {
     let stream = new BinaryStream(buffer);
 
     this.version = stream.readInt32();
     this.campaignVersion = stream.readInt32();
     this.editorVersion = stream.readInt32();
-    this.name = stream.readUntilNull();
-    this.difficulty = stream.readUntilNull();
-    this.author = stream.readUntilNull();
-    this.description = stream.readUntilNull();
+    this.name = stream.readNull();
+    this.difficulty = stream.readNull();
+    this.author = stream.readNull();
+    this.description = stream.readNull();
     this.mode = stream.readInt32();
     this.backgroundScreen = stream.readInt32();
-    this.backgroundScreenPath = stream.readUntilNull();
-    this.minimapImagePath = stream.readUntilNull();
+    this.backgroundScreenPath = stream.readNull();
+    this.minimapImagePath = stream.readNull();
     this.ambientSound = stream.readInt32();
-    this.ambientSoundPath = stream.readUntilNull();
+    this.ambientSoundPath = stream.readNull();
     this.terrainFog = stream.readInt32();
     this.fogStartZ = stream.readFloat32();
     this.fogEndZ = stream.readFloat32();
@@ -75,22 +70,21 @@ export default class War3CampaignW3f {
   }
 
   save() {
-    let buffer = new ArrayBuffer(this.getByteLength());
-    let stream = new BinaryStream(buffer);
+    let stream = new BinaryStream(new ArrayBuffer(this.getByteLength()));
 
     stream.writeInt32(this.version);
     stream.writeInt32(this.campaignVersion);
     stream.writeInt32(this.editorVersion);
-    stream.write(`${this.name}\0`);
-    stream.write(`${this.difficulty}\0`);
-    stream.write(`${this.author}\0`);
-    stream.write(`${this.description}\0`);
+    stream.writeNull(this.name);
+    stream.writeNull(this.difficulty);
+    stream.writeNull(this.author);
+    stream.writeNull(this.description);
     stream.writeInt32(this.mode);
     stream.writeInt32(this.backgroundScreen);
-    stream.write(`${this.backgroundScreenPath}\0`);
-    stream.write(`${this.minimapImagePath}\0`);
+    stream.writeNull(this.backgroundScreenPath);
+    stream.writeNull(this.minimapImagePath);
     stream.writeInt32(this.ambientSound);
-    stream.write(`${this.ambientSoundPath}\0`);
+    stream.writeNull(this.ambientSoundPath);
     stream.writeInt32(this.terrainFog);
     stream.writeFloat32(this.fogStartZ);
     stream.writeFloat32(this.fogEndZ);
@@ -109,11 +103,11 @@ export default class War3CampaignW3f {
       order.save(stream);
     }
 
-    return buffer;
+    return stream.uint8array;
   }
 
   getByteLength() {
-    let size = 63 + this.name.length + this.difficulty.length + this.author.length + this.description.length + this.backgroundScreenPath.length + this.minimapImagePath.length + this.ambientSoundPath.length;
+    let size = 63 + byteLengthUtf8(this.name) + byteLengthUtf8(this.difficulty) + byteLengthUtf8(this.author) + byteLengthUtf8(this.description) + byteLengthUtf8(this.backgroundScreenPath) + byteLengthUtf8(this.minimapImagePath) + byteLengthUtf8(this.ambientSoundPath);
 
     for (let title of this.mapTitles) {
       size += title.getByteLength();

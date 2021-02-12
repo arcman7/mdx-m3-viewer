@@ -1,4 +1,5 @@
 import BinaryStream from '../../../common/binarystream';
+import { byteLengthUtf8 } from '../../../common/utf8';
 import CustomTextTrigger from './customtexttrigger';
 
 /**
@@ -10,19 +11,13 @@ export default class War3MapWct {
   trigger: CustomTextTrigger = new CustomTextTrigger();
   triggers: CustomTextTrigger[] = [];
 
-  constructor(buffer?: ArrayBuffer) {
-    if (buffer) {
-      this.load(buffer);
-    }
-  }
-
-  load(buffer: ArrayBuffer) {
+  load(buffer: ArrayBuffer | Uint8Array) {
     let stream = new BinaryStream(buffer);
 
     this.version = stream.readInt32();
 
     if (this.version === 1) {
-      this.comment = stream.readUntilNull();
+      this.comment = stream.readNull();
 
       this.trigger.load(stream);
     }
@@ -37,13 +32,12 @@ export default class War3MapWct {
   }
 
   save() {
-    let buffer = new ArrayBuffer(this.getByteLength());
-    let stream = new BinaryStream(buffer);
+    let stream = new BinaryStream(new ArrayBuffer(this.getByteLength()));
 
     stream.writeInt32(this.version);
 
     if (this.version === 1) {
-      stream.write(`${this.comment}\0`);
+      stream.writeNull(this.comment);
 
       this.trigger.save(stream);
     }
@@ -54,14 +48,14 @@ export default class War3MapWct {
       trigger.save(stream);
     }
 
-    return buffer;
+    return stream.uint8array;
   }
 
   getByteLength() {
     let size = 8;
 
     if (this.version === 1) {
-      size += this.comment.length + 1 + this.trigger.getByteLength();
+      size += byteLengthUtf8(this.comment) + 1 + this.trigger.getByteLength();
     }
 
     for (let trigger of this.triggers) {

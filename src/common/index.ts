@@ -5,6 +5,8 @@ import * as canvas from './canvas';
 import BinaryStream from './binarystream';
 import BitStream from './bitstream';
 import urlWithParams from './urlwithparams';
+import * as path from './path';
+import { isPng, isJpeg, isGif, isWebP } from './isformat';
 
 export default {
   glMatrix,
@@ -14,4 +16,9 @@ export default {
   BinaryStream,
   BitStream,
   urlWithParams,
+  path,
+  isPng,
+  isJpeg,
+  isGif,
+  isWebP,
 };

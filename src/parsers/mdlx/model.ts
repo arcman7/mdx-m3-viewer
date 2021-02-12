@@ -1,4 +1,5 @@
 import BinaryStream from '../../common/binarystream';
+import { decodeUtf8 } from '../../common/utf8';
 import TokenStream from './tokenstream';
 import Extent from './extent';
 import Sequence from './sequence';
@@ -21,6 +22,7 @@ import EventObject from './eventobject';
 import CollisionShape from './collisionshape';
 import FaceEffect from './faceeffect';
 import UnknownChunk from './unknownchunk';
+import { isMdl, isMdx } from './isformat';
 
 /**
  * A Warcraft 3 model.
@@ -80,108 +82,87 @@ export default class Model {
    */
   unknownChunks: UnknownChunk[] = [];
 
-  constructor(buffer?: ArrayBuffer | string) {
-    if (buffer) {
-      this.load(buffer);
-    }
-  }
-
   /**
    * Load the model from MDX or MDL.
-   * The format is detected by the buffer type: ArrayBuffer for MDX, and string for MDL.
+   * The format is detected automatically.
    */
-  load(buffer: ArrayBuffer | string) {
-    if (buffer instanceof ArrayBuffer) {
-      let bytes = new Uint8Array(buffer);
-
-      // A buffer can be of both MDX and MDL, so check for the MDLX tag.
-      // If there is no MDLX, the buffer is converted to a string, and loaded as MDL.
-      if (bytes[0] === 0x4D && bytes[1] === 0x44 && bytes[2] === 0x4C && bytes[3] === 0x58) {
-        this.loadMdx(buffer);
+  load(buffer: ArrayBuffer | Uint8Array | string) {
+    if (isMdx(buffer)) {
+      this.loadMdx(<ArrayBuffer | Uint8Array>buffer);
+    } else if (isMdl(buffer)) {
+      if (typeof buffer === 'string') {
+        this.loadMdl(buffer);
       } else {
-        let decoder = new TextDecoder();
-
-        this.loadMdl(decoder.decode(bytes));
+        this.loadMdl(decodeUtf8(buffer));
       }
     } else {
-      this.loadMdl(buffer);
+      throw new Error('Not a valid MDX/MDL buffer');
     }
   }
 
   /**
    * Load the model from MDX.
    */
-  loadMdx(buffer: ArrayBuffer) {
+  loadMdx(buffer: ArrayBuffer | Uint8Array) {
     let stream = new BinaryStream(buffer);
-
-    if (stream.read(4) !== 'MDLX') {
-      throw new Error('WrongMagicNumber');
-    }
-
     let tag;
     let size;
 
-    // Found a model that lacks the needed bytes for the collision shapes chunk.
-    // The map that contains this model works in the game.
-    // Therefore if an exception is thrown because the stream reached the end prematurely, let the parser end at whatever state it finished.
-    // If something critical is missing, the handler will throw an exception.
-    try {
-      while (stream.remaining > 0) {
-        tag = stream.read(4);
-        size = stream.readUint32();
+    stream.skip(4); // MDLX
 
-        if (tag === 'VERS') {
-          this.loadVersionChunk(stream);
-        } else if (tag === 'MODL') {
-          this.loadModelChunk(stream);
-        } else if (tag === 'SEQS') {
-          this.loadStaticObjects(this.sequences, Sequence, stream, size / 132);
-        } else if (tag === 'GLBS') {
-          this.loadGlobalSequenceChunk(stream, size);
-        } else if (tag === 'MTLS') {
-          this.loadDynamicObjects(this.materials, Material, stream, size);
-        } else if (tag === 'TEXS') {
-          this.loadStaticObjects(this.textures, Texture, stream, size / 268);
-        } else if (tag === 'TXAN') {
-          this.loadDynamicObjects(this.textureAnimations, TextureAnimation, stream, size);
-        } else if (tag === 'GEOS') {
-          this.loadDynamicObjects(this.geosets, Geoset, stream, size);
-        } else if (tag === 'GEOA') {
-          this.loadDynamicObjects(this.geosetAnimations, GeosetAnimation, stream, size);
-        } else if (tag === 'BONE') {
-          this.loadDynamicObjects(this.bones, Bone, stream, size);
-        } else if (tag === 'LITE') {
-          this.loadDynamicObjects(this.lights, Light, stream, size);
-        } else if (tag === 'HELP') {
-          this.loadDynamicObjects(this.helpers, Helper, stream, size);
-        } else if (tag === 'ATCH') {
-          this.loadDynamicObjects(this.attachments, Attachment, stream, size);
-        } else if (tag === 'PIVT') {
-          this.loadPivotPointChunk(stream, size);
-        } else if (tag === 'PREM') {
-          this.loadDynamicObjects(this.particleEmitters, ParticleEmitter, stream, size);
-        } else if (tag === 'PRE2') {
-          this.loadDynamicObjects(this.particleEmitters2, ParticleEmitter2, stream, size);
-        } else if (tag === 'CORN') {
-          this.loadDynamicObjects(this.particleEmittersPopcorn, ParticleEmitterPopcorn, stream, size);
-        } else if (tag === 'RIBB') {
-          this.loadDynamicObjects(this.ribbonEmitters, RibbonEmitter, stream, size);
-        } else if (tag === 'CAMS') {
-          this.loadDynamicObjects(this.cameras, Camera, stream, size);
-        } else if (tag === 'EVTS') {
-          this.loadDynamicObjects(this.eventObjects, EventObject, stream, size);
-        } else if (tag === 'CLID') {
-          this.loadDynamicObjects(this.collisionShapes, CollisionShape, stream, size);
-        } else if (tag === 'FAFX') {
-          this.loadStaticObjects(this.faceEffects, FaceEffect, stream, size / 340);
-        } else if (tag === 'BPOS') {
-          this.loadBindPoseChunk(stream, size);
-        } else {
-          this.unknownChunks.push(new UnknownChunk(stream, size, tag));
-        }
+    while (stream.remaining > 0) {
+      tag = stream.readBinary(4);
+      size = stream.readUint32();
+
+      if (tag === 'VERS') {
+        this.loadVersionChunk(stream);
+      } else if (tag === 'MODL') {
+        this.loadModelChunk(stream);
+      } else if (tag === 'SEQS') {
+        this.loadStaticObjects(this.sequences, Sequence, stream, size / 132);
+      } else if (tag === 'GLBS') {
+        this.loadGlobalSequenceChunk(stream, size);
+      } else if (tag === 'MTLS') {
+        this.loadDynamicObjects(this.materials, Material, stream, size);
+      } else if (tag === 'TEXS') {
+        this.loadStaticObjects(this.textures, Texture, stream, size / 268);
+      } else if (tag === 'TXAN') {
+        this.loadDynamicObjects(this.textureAnimations, TextureAnimation, stream, size);
+      } else if (tag === 'GEOS') {
+        this.loadDynamicObjects(this.geosets, Geoset, stream, size);
+      } else if (tag === 'GEOA') {
+        this.loadDynamicObjects(this.geosetAnimations, GeosetAnimation, stream, size);
+      } else if (tag === 'BONE') {
+        this.loadDynamicObjects(this.bones, Bone, stream, size);
+      } else if (tag === 'LITE') {
+        this.loadDynamicObjects(this.lights, Light, stream, size);
+      } else if (tag === 'HELP') {
+        this.loadDynamicObjects(this.helpers, Helper, stream, size);
+      } else if (tag === 'ATCH') {
+        this.loadDynamicObjects(this.attachments, Attachment, stream, size);
+      } else if (tag === 'PIVT') {
+        this.loadPivotPointChunk(stream, size);
+      } else if (tag === 'PREM') {
+        this.loadDynamicObjects(this.particleEmitters, ParticleEmitter, stream, size);
+      } else if (tag === 'PRE2') {
+        this.loadDynamicObjects(this.particleEmitters2, ParticleEmitter2, stream, size);
+      } else if (tag === 'CORN') {
+        this.loadDynamicObjects(this.particleEmittersPopcorn, ParticleEmitterPopcorn, stream, size);
+      } else if (tag === 'RIBB') {
+        this.loadDynamicObjects(this.ribbonEmitters, RibbonEmitter, stream, size);
+      } else if (tag === 'CAMS') {
+        this.loadDynamicObjects(this.cameras, Camera, stream, size);
+      } else if (tag === 'EVTS') {
+        this.loadDynamicObjects(this.eventObjects, EventObject, stream, size);
+      } else if (tag === 'CLID') {
+        this.loadDynamicObjects(this.collisionShapes, CollisionShape, stream, size);
+      } else if (tag === 'FAFX') {
+        this.loadStaticObjects(this.faceEffects, FaceEffect, stream, size / 340);
+      } else if (tag === 'BPOS') {
+        this.loadBindPoseChunk(stream, size);
+      } else {
+        this.unknownChunks.push(new UnknownChunk(stream, size, tag));
       }
-    } catch (e) {
-      console.warn(`MDLX parsing error in ${tag}: ${e}`);
     }
   }
 
@@ -240,10 +221,9 @@ export default class Model {
    * Save the model as MDX.
    */
   saveMdx() {
-    let buffer = new ArrayBuffer(this.getByteLength());
-    let stream = new BinaryStream(buffer);
+    let stream = new BinaryStream(new ArrayBuffer(this.getByteLength()));
 
-    stream.write('MDLX');
+    stream.writeBinary('MDLX');
     this.saveVersionChunk(stream);
     this.saveModelChunk(stream);
     this.saveStaticObjectChunk(stream, 'SEQS', this.sequences, 132);
@@ -279,29 +259,27 @@ export default class Model {
       chunk.writeMdx(stream);
     }
 
-    return buffer;
+    return stream.uint8array;
   }
 
   saveVersionChunk(stream: BinaryStream) {
-    stream.write('VERS');
+    stream.writeBinary('VERS');
     stream.writeUint32(4);
     stream.writeUint32(this.version);
   }
 
   saveModelChunk(stream: BinaryStream) {
-    stream.write('MODL');
+    stream.writeBinary('MODL');
     stream.writeUint32(372);
-    stream.write(this.name);
-    stream.skip(80 - this.name.length);
-    stream.write(this.animationFile);
-    stream.skip(260 - this.animationFile.length);
+    stream.skip(80 - stream.write(this.name));
+    stream.skip(260 - stream.write(this.animationFile));
     this.extent.writeMdx(stream);
     stream.writeUint32(this.blendTime);
   }
 
   saveStaticObjectChunk(stream: BinaryStream, name: string, objects: (Sequence | Texture | FaceEffect)[], size: number) {
     if (objects.length) {
-      stream.write(name);
+      stream.writeBinary(name);
       stream.writeUint32(objects.length * size);
 
       for (let object of objects) {
@@ -312,7 +290,7 @@ export default class Model {
 
   saveGlobalSequenceChunk(stream: BinaryStream) {
     if (this.globalSequences.length) {
-      stream.write('GLBS');
+      stream.writeBinary('GLBS');
       stream.writeUint32(this.globalSequences.length * 4);
 
       for (let globalSequence of this.globalSequences) {
@@ -323,7 +301,7 @@ export default class Model {
 
   saveDynamicObjectChunk(stream: BinaryStream, name: string, objects: (Material | TextureAnimation | Geoset | GeosetAnimation | GenericObject | Camera)[]) {
     if (objects.length) {
-      stream.write(name);
+      stream.writeBinary(name);
       stream.writeUint32(this.getObjectsByteLength(objects));
 
       for (let object of objects) {
@@ -334,7 +312,7 @@ export default class Model {
 
   savePivotPointChunk(stream: BinaryStream) {
     if (this.pivotPoints.length) {
-      stream.write('PIVT');
+      stream.writeBinary('PIVT');
       stream.writeUint32(this.pivotPoints.length * 12);
 
       for (let pivotPoint of this.pivotPoints) {
@@ -345,7 +323,7 @@ export default class Model {
 
   saveBindPoseChunk(stream: BinaryStream) {
     if (this.bindPose.length) {
-      stream.write('BPOS');
+      stream.writeBinary('BPOS');
       stream.writeUint32(4 + this.bindPose.length * 48);
       stream.writeUint32(this.bindPose.length);
 
@@ -359,7 +337,6 @@ export default class Model {
    * Load the model from MDL.
    */
   loadMdl(buffer: string) {
-    //console.log(buffer)
     let token: string;
     let stream = new TokenStream(buffer);
 

@@ -1,13 +1,12 @@
-import BinaryStream from '../../common/binarystream';
 import { powerOfTwo } from '../../common/math';
-import { numberToUint32 } from '../../common/typecast';
+import { bytesOf, numberToUint32 } from '../../common/typecast';
+import { encodeUtf8 } from '../../common/utf8';
 import MpqBlockTable from './blocktable';
 import { HASH_ENTRY_DELETED, HASH_ENTRY_EMPTY, MAGIC } from './constants';
 import MpqCrypto from './crypto';
 import MpqFile from './file';
 import MpqHashTable from './hashtable';
 import { searchHeader } from './isarchive';
-
 
 /**
  * MoPaQ archive (MPQ) version 0.
@@ -19,20 +18,15 @@ export default class MpqArchive {
   hashTable: MpqHashTable;
   blockTable: MpqBlockTable;
   files: MpqFile[];
-  readonly: boolean;
+  readonly: boolean = false;
 
-  constructor(buffer?: ArrayBuffer, readonly?: boolean) {
+  constructor() {
     this.headerOffset = 0;
     this.sectorSize = 4096;
     this.c = new MpqCrypto();
     this.hashTable = new MpqHashTable(this.c);
     this.blockTable = new MpqBlockTable(this.c);
     this.files = [];
-    this.readonly = !!readonly;
-
-    if (buffer) {
-      this.load(buffer);
-    }
   }
 
   /**
@@ -40,17 +34,20 @@ export default class MpqArchive {
    * 
    * Note that this clears the archive from whatever it had in it before.
    */
-  load(buffer: ArrayBuffer) {
+  load(buffer: ArrayBuffer | Uint8Array, readonly: boolean = false) {
+    let bytes = bytesOf(buffer)
+
+    this.readonly = readonly;
+
     // let fileSize = buffer.byteLength;
-    let typedArray = new Uint8Array(buffer);
-    let headerOffset = searchHeader(typedArray);
+    let headerOffset = searchHeader(bytes);
 
     if (headerOffset === -1) {
-      return false;
+      throw new Error('No MPQ header');
     }
 
     // Read the header.
-    let uint32array = new Uint32Array(buffer, headerOffset, 8);
+    let uint32array = new Uint32Array(bytes.buffer, headerOffset, 8);
     // let headerSize = uint32array[1];
     // let archiveSize = uint32array[2];
     let formatVersionSectorSize = uint32array[3];
@@ -72,12 +69,12 @@ export default class MpqArchive {
     // Read the hash table.
     // Also clears any existing entries.
     // Have to copy the data, because hashPos is not guaranteed to be a multiple of 4.
-    this.hashTable.load(typedArray.slice(hashPos, hashPos + hashSize * 16));
+    this.hashTable.load(bytes.slice(hashPos, hashPos + hashSize * 16));
 
     // Read the block table.
     // Also clears any existing entries.
     // Have to copy the data, because blockPos is not guaranteed to be a multiple of 4.
-    this.blockTable.load(typedArray.slice(blockPos, blockPos + blockSize * 16));
+    this.blockTable.load(bytes.slice(blockPos, blockPos + blockSize * 16));
 
     // Clear any existing files.
     this.files.length = 0;
@@ -88,7 +85,7 @@ export default class MpqArchive {
 
       // If the file wasn't deleted, load it.
       if (blockIndex < HASH_ENTRY_DELETED) {
-        let file = new MpqFile(this, hash, this.blockTable.entries[blockIndex], buffer, null);
+        let file = new MpqFile(this, hash, this.blockTable.entries[blockIndex], bytes, null);
 
         this.files[blockIndex] = file;
       }
@@ -110,8 +107,6 @@ export default class MpqArchive {
         }
       }
     }
-
-    return true;
   }
 
   /**
@@ -172,8 +167,8 @@ export default class MpqArchive {
     let archiveSize = headerSize + filesSize + hashes * 16 + blocks * 16;
     let hashPos = headerSize + filesSize;
     let blockPos = hashPos + hashes * 16;
-    let typedArray = new Uint8Array(archiveSize);
-    let uint32array = new Uint32Array(typedArray.buffer, 0, 8);
+    let bytes = new Uint8Array(archiveSize);
+    let uint32array = new Uint32Array(bytes.buffer, 0, 8);
 
     // Write the header.
     uint32array[0] = MAGIC;
@@ -189,20 +184,22 @@ export default class MpqArchive {
 
     // Write the files.
     for (let file of this.files) {
-      file.save(typedArray.subarray(offset, offset + file.block.compressedSize));
+      if (file.rawBuffer) {
+        bytes.set(file.rawBuffer, offset)
+      }
 
       offset += file.block.compressedSize;
     }
 
     // Write the hash table.
-    hashTable.save(typedArray.subarray(offset, offset + hashTable.entries.length * 16));
+    hashTable.save(bytes.subarray(offset, offset + hashTable.entries.length * 16));
 
     offset += hashTable.entries.length * 16;
 
     // Write the block table.
-    blockTable.save(typedArray.subarray(offset, offset + blockTable.entries.length * 16));
+    blockTable.save(bytes.subarray(offset, offset + blockTable.entries.length * 16));
 
-    return typedArray.buffer;
+    return bytes;
   }
 
   /**
@@ -294,33 +291,55 @@ export default class MpqArchive {
   }
 
   /**
+   * Count the files with unresolved names.
+   */
+  countUnresolved() {
+    let unresolved = 0;
+
+    for (let file of this.files) {
+      if (!file.nameResolved) {
+        unresolved++;
+      }
+    }
+
+    return unresolved;
+  }
+
+  /**
+   * Given an iterable of file names, attempt to resolve the archive files with them.
+   */
+  applyListfile(listfile: Iterable<string>) {
+    for (let file of listfile) {
+      this.get(file);
+    }
+  }
+
+  /**
    * Adds a file to this archive.
    * If the file already exists, its buffer will be set.
    * 
    * Does nothing if the archive is in readonly mode.
    */
-  set(name: string, buffer: ArrayBuffer | string) {
+  set(name: string, buffer: ArrayBuffer | Uint8Array | string) {
     if (this.readonly) {
       return false;
     }
 
-    let arrayBuffer;
+    let bytes;
 
     if (buffer instanceof ArrayBuffer) {
-      arrayBuffer = buffer;
+      bytes = new Uint8Array(buffer);
+    } else if (buffer instanceof Uint8Array) {
+      bytes = buffer;
     } else {
-      let stream = new BinaryStream(new Uint8Array(buffer.length));
-
-      stream.write(buffer);
-
-      arrayBuffer = stream.buffer;
+      bytes = encodeUtf8(buffer);
     }
 
     let file = this.get(name);
 
     // If the file already exists, change the data.
     if (file) {
-      file.set(arrayBuffer);
+      file.set(bytes);
     } else {
       let blockIndex = this.blockTable.entries.length;
       let hash = this.hashTable.add(name, blockIndex);
@@ -329,9 +348,9 @@ export default class MpqArchive {
         return false;
       }
 
-      let block = this.blockTable.add(arrayBuffer);
+      let block = this.blockTable.add(bytes);
 
-      file = new MpqFile(this, hash, block, null, arrayBuffer);
+      file = new MpqFile(this, hash, block, null, bytes);
       file.name = name;
       file.nameResolved = true;
 

@@ -1,4 +1,4 @@
-import ShaderProgram from '../../gl/program';
+import Shader from '../../gl/shader';
 import Scene from '../../scene';
 import Texture from '../../texture';
 import MdxModel from './model';
@@ -24,7 +24,7 @@ export default class BatchGroup {
 
   render(instance: MdxModelInstance) {
     let scene = <Scene>instance.scene;
-    let resourceMapper = instance.resourceMapper;
+    let textureOverrides = instance.textureOverrides;
     let layerAlphas = instance.layerAlphas;
     let model = this.model;
     let textures = model.textures;
@@ -35,25 +35,16 @@ export default class BatchGroup {
     let webgl = viewer.webgl;
     let isExtended = this.isExtended;
     let isHd = this.isHd;
-    let isReforged = model.reforged;
-    let teamColors: MdxTexture[];
-    let teamGlows: MdxTexture[];
+    let teamColors = <MdxTexture[]>mdxCache.teamColors;
+    let teamGlows = <MdxTexture[]>mdxCache.teamGlows;
     let shader;
 
-    if (isReforged) {
-      teamColors = mdxCache.reforgedTeamColors;
-      teamGlows = mdxCache.reforgedTeamGlows;
-    } else {
-      teamColors = mdxCache.teamColors;
-      teamGlows = mdxCache.teamGlows;
-    }
-
     if (isExtended) {
-      shader = <ShaderProgram>mdxCache.extendedShader;
+      shader = <Shader>mdxCache.extendedShader;
     } else if (isHd) {
-      shader = <ShaderProgram>mdxCache.hdShader;
+      shader = <Shader>mdxCache.hdShader;
     } else {
-      shader = <ShaderProgram>mdxCache.standardShader;
+      shader = <Shader>mdxCache.standardShader;
     }
 
     shader.use();
@@ -110,8 +101,8 @@ export default class BatchGroup {
           let ormTexture = textures[ormId];
           let tcTexture = teamColors[instance.teamColor];
 
-          let actualDiffuseTexture = <Texture | undefined>resourceMapper.get(diffuseId) || diffuseTexture.texture;
-          let actualOrmTexture = <Texture | undefined>resourceMapper.get(ormId) || ormTexture.texture;
+          let actualDiffuseTexture = textureOverrides.get(diffuseId) || diffuseTexture.texture;
+          let actualOrmTexture = textureOverrides.get(ormId) || ormTexture.texture;
 
           webgl.bindTextureAndWrap(actualDiffuseTexture, 0, diffuseTexture.wrapS, diffuseTexture.wrapT);
           webgl.bindTextureAndWrap(actualOrmTexture, 1, ormTexture.wrapS, ormTexture.wrapT);
@@ -152,7 +143,7 @@ export default class BatchGroup {
 
           layer.bind(shader);
 
-          let texture = <Texture | undefined>resourceMapper.get(textureIndex);
+          let texture: Texture | null | undefined = textureOverrides.get(textureIndex);
 
           if (!texture) {
             let replaceable = layerTexture.replaceableId;

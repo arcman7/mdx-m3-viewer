@@ -17,18 +17,20 @@ document.addEventListener('drop', e => {
 
   for (let file of e.dataTransfer.files) {
     let name = file.name;
-    let ext = name.substr(name.lastIndexOf('.')).toLowerCase();
+    let ext = ModelViewer.default.common.path.extname(name);
 
     if (ext === '.mdx' || ext === '.mdl') {
       let reader = new FileReader();
 
       reader.addEventListener('loadend', (e) => {
-        let model = new Model(e.target.result);
+        let model = new Model();
+        model.load(e.target.result);
+
         let buffer;
         let type;
 
         if (ext === '.mdl') {
-          buffer = model.saveMdx();
+          buffer = model.saveMdx().buffer;
           type = 'application/octet-stream';
           ext = 'mdx';
         } else {

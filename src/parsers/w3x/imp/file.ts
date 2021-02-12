@@ -8,13 +8,7 @@ export default class War3MapImp {
   version: number = 1;
   entries: Map<string, Import> = new Map();
 
-  constructor(buffer?: ArrayBuffer) {
-    if (buffer) {
-      this.load(buffer);
-    }
-  }
-
-  load(buffer: ArrayBuffer) {
+  load(buffer: ArrayBuffer | Uint8Array) {
     let stream = new BinaryStream(buffer);
 
     this.version = stream.readUint32();
@@ -33,8 +27,7 @@ export default class War3MapImp {
   }
 
   save() {
-    let buffer = new ArrayBuffer(this.getByteLength());
-    let stream = new BinaryStream(buffer);
+    let stream = new BinaryStream(new ArrayBuffer(this.getByteLength()));
 
     stream.writeUint32(this.version);
     stream.writeUint32(this.entries.size);
@@ -43,7 +36,7 @@ export default class War3MapImp {
       entry.save(stream);
     }
 
-    return buffer;
+    return stream.uint8array;
   }
 
   getByteLength() {

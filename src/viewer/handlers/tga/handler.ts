@@ -1,17 +1,14 @@
-import { isStringInBytes } from '../../../common/isstringin';
+import TgaImage from '../../../parsers/tga/image';
+import isTga from '../../../parsers/tga/isformat';
 import Texture from './texture';
 
 export default {
-  isValidSource(src: any) {
-    if (src instanceof ArrayBuffer) {
-      let buffer = new Uint8Array(src);
-
-      if (isStringInBytes('TRUEVISION-XFILE.\0', buffer, buffer.length - 18)) {
-        return true;
-      }
+  isValidSource(object: any) {
+    if (object instanceof TgaImage) {
+      return true;
     }
 
-    return false;
+    return isTga(object);
   },
   resource: Texture,
 };

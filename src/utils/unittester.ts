@@ -9,6 +9,7 @@ import Camera from '../viewer/camera';
 import mdxHandler from '../viewer/handlers/mdx/handler';
 import blpHandler from '../viewer/handlers/blp/handler';
 import m3Handler from '../viewer/handlers/m3/handler';
+import { PathSolver } from '../viewer/handlerresource';
 
 /**
  * The signature of a test loader.
@@ -51,7 +52,7 @@ interface TestResult {
     name: string;
     testImage?: HTMLImageElement;
     comparisonImage?: HTMLImageElement;
-    result: number;
+    mismatchPercentage: number;
   }
 }
 
@@ -80,7 +81,7 @@ export default class UnitTester {
   mathRandom: () => number = Math.random;
   tests: Test[] = [];
 
-  constructor() {
+  constructor(wc3PathSolver: PathSolver) {
     let canvas = document.createElement('canvas');
 
     canvas.width = canvas.height = 256;
@@ -91,7 +92,7 @@ export default class UnitTester {
 
     viewer.on('error', ({ error, fetchUrl, reason }) => console.log(error, fetchUrl, reason));
 
-    viewer.addHandler(mdxHandler);
+    viewer.addHandler(mdxHandler, wc3PathSolver);
     viewer.addHandler(blpHandler);
     viewer.addHandler(m3Handler);
 
@@ -124,18 +125,18 @@ export default class UnitTester {
         let testImage = await blobToImage(testBlob);
         let comparisonImage = await blobToImage(comparisonBlob);
 
-        callback({ done: false, value: { name: test.name, testImage, comparisonImage, result: comparisonResult.rawMisMatchPercentage } });
+        callback({ done: false, value: { name: test.name, testImage, comparisonImage, mismatchPercentage: comparisonResult.rawMisMatchPercentage } });
       } else {
         // Fail modes.
         // 1) The test blob exists, but comparison doesn't. This happens when adding new tests.
         // 2) The comparison blob exists, but the test doesn't. This happens when having issues with fetching the files needed for the tests.
         // 3) Neither exists.
         if (testBlob) {
-          callback({ done: false, value: { name: test.name, testImage: await blobToImage(testBlob), result: 100 } });
+          callback({ done: false, value: { name: test.name, testImage: await blobToImage(testBlob), mismatchPercentage: 100 } });
         } else if (comparisonBlob) {
-          callback({ done: false, value: { name: test.name, comparisonImage: await blobToImage(comparisonBlob), result: 100 } });
+          callback({ done: false, value: { name: test.name, comparisonImage: await blobToImage(comparisonBlob), mismatchPercentage: 100 } });
         } else {
-          callback({ done: false, value: { name: test.name, result: 100 } });
+          callback({ done: false, value: { name: test.name, mismatchPercentage: 100 } });
         }
       }
     }
@@ -194,11 +195,6 @@ export default class UnitTester {
     viewer.clear();
 
     let scene = viewer.addScene();
-    let camera = scene.camera;
-
-    // Setup the camera
-    camera.setViewport(0, 0, viewer.canvas.width, viewer.canvas.height);
-    camera.perspective(Math.PI / 4, 1, 8, 100000);
 
     // Start loading the test.
     let data = loadHandler(viewer);
@@ -219,7 +215,7 @@ export default class UnitTester {
       Math.random = seededRandom(6);
 
       // Run the test.
-      testHandler(viewer, scene, camera, data);
+      testHandler(viewer, scene, scene.camera, data);
 
       // Update and render.
       viewer.updateAndRender();

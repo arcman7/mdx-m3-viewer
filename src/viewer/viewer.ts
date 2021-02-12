@@ -1,25 +1,19 @@
 import { EventEmitter } from 'events';
 import { FetchDataTypeName, FetchDataType, FetchResult, fetchDataType } from '../common/fetchdatatype';
-import mapequals from '../common/mapequals';
 import WebGL from './gl/gl';
 import Scene from './scene';
 import { Resource } from './resource';
 import { PathSolver, HandlerResourceData, HandlerResource } from './handlerresource';
 import GenericResource from './genericresource';
 import ClientBuffer from './gl/clientbuffer';
-import Model from './model';
-import ModelInstance from './modelinstance';
-import ResourceMapper from './resourcemapper';
 import { isImageSource, ImageTexture, detectMime } from './imagetexture';
 import { blobToImage } from '../common/canvas';
 
 /**
- * The minimal structure of handlers.
- * 
- * Additional data can be added to them for the purposes of the implementation.
+ * A viewer handler.
  */
 export interface Handler {
-  load?: (viewer: ModelViewer) => void;
+  load?: (viewer: ModelViewer, ...args: any[]) => void;
   isValidSource: (src: any) => boolean;
   resource: new (src: any, resourceData: HandlerResourceData) => HandlerResource
 }
@@ -28,28 +22,62 @@ export interface Handler {
  * A model viewer.
  */
 export default class ModelViewer extends EventEmitter {
+  /**
+   * The viewer's canvas.
+   */
+  canvas: HTMLCanvasElement;
+  /**
+   * The viewer's WebGL context.
+   */
+  gl: WebGLRenderingContext;
+  /**
+   * A wrapper around the viewer's WebGL context with utility functions.
+   */
+  webgl: WebGL;
+  /**
+   * All of the loaded resources.
+   */
   resources: Resource[] = [];
   /**
-   * A map from resource keys, typically urls, to their resources.
+   * A map from urls to their resources.
+   * 
+   * Only used by fetched resources.
    */
   resourceMap: Map<string, Resource> = new Map();
+  /**
+   * A map from urls to the promises that load them.
+   * 
+   * Only used by fetched resources.
+   */
   promiseMap: Map<string, Promise<Resource | undefined>> = new Map();
+  /**
+   * The viewer's handlers, added with `addHandler()`.
+   */
   handlers: Set<Handler> = new Set();
-  frameTime: number = 1000 / 60;
-  canvas: HTMLCanvasElement;
-  webgl: WebGL;
-  gl: WebGLRenderingContext;
+  /**
+   * The viewer's scenes, added with `addScene()`.
+   */
   scenes: Scene[] = [];
-  visibleCells: number = 0;
-  visibleInstances: number = 0;
-  updatedParticles: number = 0;
+  /**
+   * The number of animation frames advanced on every viewer update.
+   */
+  frameTime: number = 1000 / 60;
+  /**
+   * The current frame.
+   */
   frame: number = 0;
   /**
-   * A resizeable buffer that can be used by any part of the library.
-   * 
-   * The data it contains is temporary, and can be overwritten at any time.
+   * The number of visible cells on the current frame.
    */
-  buffer: ClientBuffer;
+  visibleCells: number = 0;
+  /**
+   * The number of visible instances on the current frame.
+   */
+  visibleInstances: number = 0;
+  /**
+   * The number of particles being updated on the current frame.
+   */
+  updatedParticles: number = 0;
   /**
    * A viewer-wide flag.
    * 
@@ -60,7 +88,12 @@ export default class ModelViewer extends EventEmitter {
    * Note that it is preferable to call enableAudio(), which checks for the existence of AudioContext.
    */
   audioEnabled: boolean = false;
-  resourceMappers: Map<Model, ResourceMapper[]> = new Map();
+  /**
+   * A resizeable buffer that can be used by any part of the library.
+   * 
+   * The data it contains is temporary, and can be overwritten at any time.
+   */
+  buffer: ClientBuffer;
   /**
    * A cache of arbitrary data, shared between all of the handlers.
    */
@@ -93,7 +126,7 @@ export default class ModelViewer extends EventEmitter {
   /**
    * Add an handler.
    */
-  addHandler(handler: Handler) {
+  addHandler(handler: Handler, ...args: any[]) {
     if (handler) {
       let handlers = this.handlers;
 
@@ -107,7 +140,7 @@ export default class ModelViewer extends EventEmitter {
         // Check if the handler has a loader, and if so load it.
         if (handler.load) {
           try {
-            handler.load(this);
+            handler.load(this, ...args);
           } catch (e) {
             this.emit('error', { viewer: this, error: `Handler failed to load`, handler, reason: e });
 
@@ -219,7 +252,7 @@ export default class ModelViewer extends EventEmitter {
           }
         });
     } else {
-      fetchUrl = `__${this.directLoadId++}__${src}`;
+      fetchUrl = `__DIRECT_LOAD_${this.directLoadId++}`;
       promise = Promise.resolve(finalSrc);
     }
 
@@ -227,17 +260,21 @@ export default class ModelViewer extends EventEmitter {
       .then(async (actualSrc) => {
         // finalSrc will be undefined if this is a fetch and the fetch failed.
         if (actualSrc) {
+          if (actualSrc instanceof ArrayBuffer) {
+            actualSrc = new Uint8Array(actualSrc);
+          }
+
           // If the source is an image source, load it directly.
           if (isImageSource(actualSrc)) {
             return new ImageTexture(actualSrc, { viewer: this, fetchUrl, pathSolver });
           }
 
           // If the source is a buffer of an image, convert it to an image, and load it directly.
-          if (actualSrc instanceof ArrayBuffer) {
+          if (actualSrc instanceof Uint8Array) {
             let type = detectMime(actualSrc);
 
             if (type.length) {
-              return new ImageTexture(await blobToImage(new Blob([actualSrc], { type })), { viewer: this, fetchUrl, pathSolver });
+              return new ImageTexture(await blobToImage(new Blob([actualSrc.buffer], { type })), { viewer: this, fetchUrl, pathSolver });
             }
           }
 
@@ -310,7 +347,7 @@ export default class ModelViewer extends EventEmitter {
    * 
    * Unlike load(), this does not use handlers or construct any internal objects.
    * 
-   * `dataType` can be one of: `"image"`, `"string"`, `"arrayBuffer"`, `"blob"`.
+   * `dataType` can be one of: `"image"`, `"string"`, `"arrayBuffer"`, `"bytes"`, `"blob"`.
    * 
    * If `callback` isn't given, the resource's `data` is the fetch data, according to `dataType`.
    * 
@@ -493,6 +530,7 @@ export default class ModelViewer extends EventEmitter {
 
     // See https://www.opengl.org/wiki/FAQ#Masking
     gl.depthMask(true);
+    gl.clearColor(0, 0, 0, 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
   }
 
@@ -512,46 +550,5 @@ export default class ModelViewer extends EventEmitter {
     for (let scene of this.scenes) {
       scene.clearEmittedObjects();
     }
-  }
-
-  baseTextureMapper(model: Model) {
-    let resourceMappers = this.resourceMappers;
-
-    if (!resourceMappers.has(model)) {
-      resourceMappers.set(model, []);
-    }
-
-    let mappers = <ResourceMapper[]>resourceMappers.get(model);
-
-    if (!mappers.length) {
-      mappers[0] = new ResourceMapper(model);
-    }
-
-    return mappers[0];
-  }
-
-  changeResourceMapper(instance: ModelInstance, index: number, resource?: Resource) {
-    let map = new Map(instance.resourceMapper.resources);
-
-    if (resource instanceof Resource) {
-      map.set(index, resource);
-    } else {
-      map.delete(index);
-    }
-
-    let model = instance.model;
-    let mappers = <ResourceMapper[]>this.resourceMappers.get(model);
-
-    for (let mapper of mappers) {
-      if (mapequals(mapper.resources, map)) {
-        return mapper;
-      }
-    }
-
-    let mapper = new ResourceMapper(model, map);
-
-    mappers.push(mapper);
-
-    return mapper;
   }
 }

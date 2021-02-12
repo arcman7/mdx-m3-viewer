@@ -1,8 +1,9 @@
 import M3ParserStandardMaterial from '../../../parsers/m3/standardmaterial';
-import ShaderProgram from '../../gl/program';
-import ResourceMapper from '../../resourcemapper';
+import Shader from '../../gl/shader';
+import Texture from '../../texture';
 import M3Model from './model';
 import M3Layer from './layer';
+
 
 export const STANDARD_MATERIAL_OFFSET = 100;
 
@@ -30,7 +31,7 @@ export class M3StandardMaterial {
     this.model = model;
     this.gl = model.viewer.gl;
     this.index = index;
-    this.name = material.name.getAll().join('');
+    this.name = <string>material.name.get();
     this.flags = material.flags;
     this.blendMode = material.blendMode;
     this.priority = material.priority;
@@ -85,7 +86,7 @@ export class M3StandardMaterial {
     gl.depthMask(true);
   }
 
-  bind(shader: ShaderProgram, resourceMapper: ResourceMapper) {
+  bind(shader: Shader, textureOverrides: Map<number, Texture>) {
     const gl = this.gl;
 
     this.bindCommon();
@@ -97,16 +98,16 @@ export class M3StandardMaterial {
 
     const layers = this.layers;
 
-    layers[0].bind(shader, resourceMapper);
-    layers[1].bind(shader, resourceMapper);
-    layers[2].bind(shader, resourceMapper);
-    layers[4].bind(shader, resourceMapper);
-    layers[5].bind(shader, resourceMapper);
-    layers[10].bind(shader, resourceMapper);
-    layers[12].bind(shader, resourceMapper);
+    layers[0].bind(shader, textureOverrides);
+    layers[1].bind(shader, textureOverrides);
+    layers[2].bind(shader, textureOverrides);
+    layers[4].bind(shader, textureOverrides);
+    layers[5].bind(shader, textureOverrides);
+    layers[10].bind(shader, textureOverrides);
+    layers[12].bind(shader, textureOverrides);
   }
 
-  unbind(shader: ShaderProgram) {
+  unbind(shader: Shader) {
     const gl = this.gl;
 
     gl.disable(gl.BLEND);

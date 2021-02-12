@@ -1,6 +1,8 @@
-import { isStringInBytes, isStringInString } from '../../../common/isstringin';
 import MdlxModel from '../../../parsers/mdlx/model';
+import { isMdx, isMdl } from '../../../parsers/mdlx/isformat';
 import ModelViewer from '../../viewer';
+import { PathSolver } from '../../handlerresource';
+import Texture from '../../texture';
 import Model from './model';
 import MdxTexture from './texture';
 import standardVert from './shaders/standard.vert';
@@ -11,7 +13,7 @@ import particlesVert from './shaders/particles.vert';
 import particlesFrag from './shaders/particles.frag';
 
 export default {
-  load(viewer: ModelViewer) {
+  load(viewer: ModelViewer, pathSolver?: PathSolver, reforgedTeams?: boolean) {
     let gl = viewer.gl;
     let webgl = viewer.webgl;
 
@@ -25,18 +27,37 @@ export default {
       throw new Error('MDX: No instanced rendering support!');
     }
 
-    let standardShader = webgl.createShaderProgram(standardVert, standardFrag);
-    let extendedShader = webgl.createShaderProgram('#define EXTENDED_BONES\n' + standardVert, standardFrag);
-    let hdShader = webgl.createShaderProgram(hdVert, hdFrag);
-    let particlesShader = webgl.createShaderProgram(particlesVert, particlesFrag);
+    let standardShader = webgl.createShader(standardVert, standardFrag);
+    let extendedShader = webgl.createShader('#define EXTENDED_BONES\n' + standardVert, standardFrag);
+    let hdShader = webgl.createShader(hdVert, hdFrag);
+    let particlesShader = webgl.createShader(particlesVert, particlesFrag);
 
     let rectBuffer = <WebGLBuffer>gl.createBuffer();
 
     gl.bindBuffer(gl.ARRAY_BUFFER, rectBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, new Uint8Array([0, 1, 2, 0, 2, 3]), gl.STATIC_DRAW);
 
-    if (standardShader === null || extendedShader === null || hdShader === null || particlesShader === null) {
-      throw new Error('MDX: Failed to compile the shaders!');
+    let teamColors: MdxTexture[] = [];
+    let teamGlows: MdxTexture[] = [];
+    let teams = reforgedTeams ? 28 : 14;
+    let ext = reforgedTeams ? 'dds' : 'blp';
+    let params = reforgedTeams ? { reforged: true } : {};
+
+    for (let i = 0; i < teams; i++) {
+      let id = ('' + i).padStart(2, '0');
+      let end = `${id}.${ext}`;
+
+      let teamColor = new MdxTexture(1, true, true);
+      let teamGlow = new MdxTexture(2, true, true);
+
+      viewer.load(`ReplaceableTextures\\TeamColor\\TeamColor${end}`, pathSolver, params)
+        .then((texture) => teamColor.texture = <Texture>texture);
+
+      viewer.load(`ReplaceableTextures\\TeamGlow\\TeamGlow${end}`, pathSolver, params)
+        .then((texture) => teamGlow.texture = <Texture>texture);
+
+      teamColors[i] = teamColor;
+      teamGlows[i] = teamGlow;
     }
 
     viewer.sharedCache.set('mdx', {
@@ -47,39 +68,17 @@ export default {
       particlesShader,
       // Geometry emitters buffer.
       rectBuffer,
-      // Team color/glow textures, shared between all non-Reforged models, but loaded with the first model that uses them.
-      teamColors: <MdxTexture[]>[],
-      teamGlows: <MdxTexture[]>[],
-      // Same as above, but only loaded and used by Reforged models.
-      reforgedTeamColors: <MdxTexture[]>[],
-      reforgedTeamGlows: <MdxTexture[]>[],
+      // Team color/glow textures.
+      teamColors,
+      teamGlows,
     });
   },
-  isValidSource(src: any) {
-    if (src instanceof MdlxModel) {
+  isValidSource(object: any) {
+    if (object instanceof MdlxModel) {
       return true;
     }
 
-    if (src instanceof ArrayBuffer) {
-      let bytes = new Uint8Array(src);
-
-      // MDLX
-      if (bytes[0] === 0x4D && bytes[1] === 0x44 && bytes[2] === 0x4C && bytes[3] === 0x58) {
-        return true;
-      }
-
-      // Or attempt to match against MDL by looking for FormatVersion in the first 4KB.
-      if (isStringInBytes('FormatVersion', bytes, 0, 4096)) {
-        return true;
-      }
-    }
-
-    // If the source is a string, look for FormatVersion same as above.
-    if (typeof src === 'string' && isStringInString('FormatVersion', src, 0, 4096)) {
-      return true;
-    }
-
-    return false;
+    return isMdx(object) || isMdl(object);
   },
   resource: Model,
 };

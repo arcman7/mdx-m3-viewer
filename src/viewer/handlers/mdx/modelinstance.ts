@@ -168,24 +168,37 @@ export default class MdxModelInstance extends ModelInstance {
       this.sortedNodes[i] = nodes[hierarchy[i]];
     }
 
-    // If the sequence was changed before the model was loaded, reset it now that the model loaded.
-    this.setSequence(this.sequence);
-
     if (model.bones.length) {
       this.boneTexture = new DataTexture(model.viewer.gl, 4, model.bones.length * 4, 1);
     }
   }
 
+
+  /**
+   * Override the texture at the given index.
+   * 
+   * If a texture isn't given, removes the override if there was one.
+   */
   setTexture(index: number, texture?: Texture) {
-    this.setResource(index, texture);
+    this.overrideTexture(index, texture);
   }
 
+  /**
+   * Override the texture of the particle emitter the given index.
+   * 
+   * If a texture isn't given, removes the override if there was one.
+   */
   setParticle2Texture(index: number, texture?: Texture) {
-    this.setResource(EMITTER_PARTICLE2_TEXTURE_OFFSET + index, texture);
+    this.overrideTexture(EMITTER_PARTICLE2_TEXTURE_OFFSET + index, texture);
   }
 
+  /**
+   * Override the texture of the event emitter the given index.
+   * 
+   * If a texture isn't given, removes the override if there was one.
+   */
   setEventTexture(index: number, texture?: Texture) {
-    this.setResource(EMITTER_EVENT_TEXTURE_OFFSET + index, texture);
+    this.overrideTexture(EMITTER_EVENT_TEXTURE_OFFSET + index, texture);
   }
 
   /**
@@ -243,9 +256,7 @@ export default class MdxModelInstance extends ModelInstance {
   hide() {
     super.hide();
 
-    for (let attachment of this.attachments) {
-      attachment.internalInstance.hide();
-    }
+    this.resetAttachments();
   }
 
   /**
@@ -523,6 +534,7 @@ export default class MdxModelInstance extends ModelInstance {
     }
 
     this.resetEventEmitters();
+    this.resetAttachments();
 
     this.forced = true;
 
@@ -561,5 +573,11 @@ export default class MdxModelInstance extends ModelInstance {
     // for (let eventEmitterView of this.eventObjectEmitters) {
     //   eventEmitterView.reset();
     // }
+  }
+
+  resetAttachments() {
+    for (let attachment of this.attachments) {
+      attachment.internalInstance.hide();
+    }
   }
 }

@@ -14,16 +14,10 @@ export default class War3MapWtg {
   variables: Variable[] = [];
   triggers: Trigger[] = [];
 
-  constructor(buffer?: ArrayBuffer, triggerData?: TriggerData) {
-    if (buffer && triggerData) {
-      this.load(buffer, triggerData);
-    }
-  }
-
-  load(buffer: ArrayBuffer, triggerData: TriggerData) {
+  load(buffer: ArrayBuffer | Uint8Array, triggerData: TriggerData) {
     let stream = new BinaryStream(buffer);
 
-    if (stream.read(4) !== 'WTG!') {
+    if (stream.readBinary(4) !== 'WTG!') {
       throw new Error('Not a WTG file');
     }
 
@@ -61,10 +55,9 @@ export default class War3MapWtg {
   }
 
   save() {
-    let buffer = new ArrayBuffer(this.getByteLength());
-    let stream = new BinaryStream(buffer);
+    let stream = new BinaryStream(new ArrayBuffer(this.getByteLength()));
 
-    stream.write('WTG!');
+    stream.writeBinary('WTG!');
     stream.writeInt32(this.version);
     stream.writeUint32(this.categories.length);
 
@@ -85,7 +78,7 @@ export default class War3MapWtg {
       trigger.save(stream, this.version);
     }
 
-    return buffer;
+    return stream.uint8array;
   }
 
   getByteLength() {

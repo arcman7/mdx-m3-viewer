@@ -77,7 +77,18 @@ export default class MdxModel extends Model {
     if (bufferOrParser instanceof Parser) {
       parser = bufferOrParser;
     } else {
-      parser = new Parser(bufferOrParser);
+      parser = new Parser();
+
+      try {
+        parser.load(bufferOrParser);
+      } catch (e) {
+        // If we get here, the parser failed to load.
+        // It still may have loaded enough data to support rendering though!
+        // I have encountered a model that is missing data, but still works in-game.
+        // So just let the code continue.
+        // If the handler manages to load the model, nothing happened.
+        // If critical data is missing, it will fail and throw its own exception.
+      }
     }
 
     let viewer = this.viewer;
@@ -136,8 +147,6 @@ export default class MdxModel extends Model {
       solverParams.hd = true;
     }
 
-    let usingTeamTextures = false;
-
     // Textures.
     let textures = parser.textures;
     for (let i = 0, l = textures.length; i < l; i++) {
@@ -148,14 +157,6 @@ export default class MdxModel extends Model {
 
       if (replaceableId !== 0) {
         path = `ReplaceableTextures\\${replaceableIds[replaceableId]}${texturesExt}`;
-
-        if (replaceableId === 1 || replaceableId === 2) {
-          usingTeamTextures = true;
-        }
-      }
-
-      if (reforged && !path.endsWith('.dds')) {
-        path = `${path.slice(0, -4)}.dds`;
       }
 
       let mdxTexture = new MdxTexture(replaceableId, !!(flags & 0x1), !!(flags & 0x2));
@@ -168,39 +169,6 @@ export default class MdxModel extends Model {
         });
 
       this.textures[i] = mdxTexture;
-    }
-
-    // Start loading the team color and glow textures if this model uses them and they weren't loaded previously.
-    if (usingTeamTextures) {
-      let mdxCache = viewer.sharedCache.get('mdx');
-      let teamColors: MdxTexture[] = reforged ? mdxCache.reforgedTeamColors : mdxCache.teamColors;
-      let teamGlows: MdxTexture[] = reforged ? mdxCache.reforgedTeamGlows : mdxCache.teamGlows;
-
-      if (!teamColors.length) {
-        for (let i = 0; i < 14; i++) {
-          let id = ('' + i).padStart(2, '0');
-
-          let teamColor = new MdxTexture(1, true, true);
-          let teamGlow = new MdxTexture(2, true, true);
-
-          viewer.load(`ReplaceableTextures\\TeamColor\\TeamColor${id}${texturesExt}`, pathSolver, solverParams)
-            .then((texture) => {
-              if (texture) {
-                teamColor.texture = <Texture>texture;
-              }
-            });
-
-          viewer.load(`ReplaceableTextures\\TeamGlow\\TeamGlow${id}${texturesExt}`, pathSolver, solverParams)
-            .then((texture) => {
-              if (texture) {
-                teamGlow.texture = <Texture>texture;
-              }
-            });
-
-          teamColors[i] = teamColor;
-          teamGlows[i] = teamGlow;
-        }
-      }
     }
 
     // Geoset animations
